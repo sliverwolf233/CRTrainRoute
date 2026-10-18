@@ -1,0 +1,24 @@
+# 本地配置（含高德密钥，请勿提交）
+config.js
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*~
+
+# 临时文件
+*.log
+*.tmp

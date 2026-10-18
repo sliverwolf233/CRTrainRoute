@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中国铁路算路</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  #map { position: absolute; inset: 0; }
+
+  .panel {
+    position: absolute; top: 16px; left: 16px; z-index: 100;
+    width: 340px; background: #fff; border-radius: 12px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.16);
+    overflow: hidden;
+  }
+  .panel-head {
+    background: linear-gradient(135deg, #1e5eb8, #2f7ee0);
+    color: #fff; padding: 14px 18px;
+  }
+  .panel-head h1 { font-size: 16px; font-weight: 600; letter-spacing: .5px; }
+  .panel-head p { font-size: 11px; opacity: .82; margin-top: 3px; }
+  .panel-body { padding: 14px 18px 16px; }
+
+  .field { position: relative; margin-bottom: 10px; }
+  .field label { display: block; font-size: 12px; color: #666; margin-bottom: 5px; }
+  .field input {
+    width: 100%; padding: 10px 12px; font-size: 14px;
+    border: 1px solid #dcdfe6; border-radius: 8px; outline: none;
+    transition: border-color .15s;
+  }
+  .field input:focus { border-color: #2f7ee0; box-shadow: 0 0 0 3px rgba(47,126,224,.12); }
+
+  .swap {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 30px; height: 30px; border: none; border-radius: 50%;
+    background: #f0f4fa; color: #2f7ee0; cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, transform .2s;
+  }
+  .swap:hover { background: #dfe9f7; transform: translateY(-50%) rotate(180deg); }
+
+  .suggest {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+    background: #fff; border: 1px solid #e4e7ed; border-radius: 8px;
+    margin-top: 4px; max-height: 220px; overflow-y: auto;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12); display: none;
+  }
+  .suggest div { padding: 9px 12px; font-size: 13px; cursor: pointer; }
+  .suggest div:hover, .suggest div.active { background: #f0f6ff; color: #2f7ee0; }
+  .suggest .code { color: #999; font-size: 11px; margin-left: 6px; }
+
+  .btn {
+    width: 100%; padding: 11px; border: none; border-radius: 8px;
+    background: linear-gradient(135deg, #1e5eb8, #2f7ee0); color: #fff;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn:hover { opacity: .92; }
+  .btn:active { transform: scale(.99); }
+  .btn:disabled { background: #b9c6d6; cursor: not-allowed; opacity: 1; }
+
+  .msg { font-size: 12px; margin-top: 10px; padding: 9px 11px; border-radius: 8px; display: none; }
+  .msg.err { display: block; background: #fef0f0; color: #d93025; border: 1px solid #fde2e2; }
+  .msg.loading { display: block; background: #f4f8ff; color: #2f7ee0; border: 1px solid #dbe8fb; }
+
+  /* 结果区 */
+  .result { display: none; border-top: 1px solid #eef0f3; margin-top: 14px; padding-top: 12px; }
+  .result.show { display: block; }
+  .stats { display: flex; gap: 8px; margin-bottom: 10px; }
+  .stat {
+    flex: 1; background: #f7f9fc; border-radius: 8px; padding: 9px 6px; text-align: center;
+  }
+  .stat b { display: block; font-size: 16px; color: #1e5eb8; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 11px; color: #889; }
+
+  .stations-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: #666; margin-bottom: 6px;
+  }
+  .stations-head button {
+    border: none; background: none; color: #2f7ee0; font-size: 12px;
+    cursor: pointer; padding: 2px 4px;
+  }
+  .station-list {
+    max-height: 220px; overflow-y: auto; font-size: 12px;
+    border: 1px solid #eef0f3; border-radius: 8px;
+  }
+  .station-list.collapsed { display: none; }
+  .station-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 10px; border-bottom: 1px solid #f5f6f8; cursor: pointer;
+  }
+  .station-item:last-child { border-bottom: none; }
+  .station-item:hover { background: #f5f9ff; }
+  .station-item .nm { color: #333; }
+  .station-item .km { color: #999; font-variant-numeric: tabular-nums; }
+
+  .km-plan-box {
+    display: none; font-size: 11px; line-height: 1.5; color: #1e5eb8;
+    background: #eef5ff; border: 1px solid #cfe2fb; border-radius: 8px;
+    padding: 8px 10px; margin-bottom: 10px;
+  }
+  .km-plan-box b { font-variant-numeric: tabular-nums; }
+
+  .warn-box {
+    display: none; font-size: 11px; line-height: 1.5; color: #8a5a00;
+    background: #fff8e6; border: 1px solid #ffe0a3; border-radius: 8px;
+    padding: 8px 10px; margin-bottom: 10px;
+  }
+
+  .route-line { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 0 10px; }
+  .route-line .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .route-line .dot.a { background: #18a058; }
+  .route-line .dot.b { background: #d03050; }
+  .route-line .nm { font-weight: 600; color: #333; }
+  .route-line .arrow { color: #bbb; }
+
+  .tip {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 100; background: rgba(255,255,255,.96); border-radius: 8px;
+    padding: 8px 16px; font-size: 12px; color: #666;
+    box-shadow: 0 2px 12px rgba(0,0,0,.1);
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="panel">
+  <div class="panel-head">
+    <h1>中国铁路算路</h1>
+    <p>输入车站名称，计算最短走行线路</p>
+  </div>
+  <div class="panel-body">
+    <div class="field">
+      <label>出发站</label>
+      <input id="from" type="text" placeholder="如：广州南" autocomplete="off">
+      <button class="swap" id="swap" title="交换出发/到达">⇅</button>
+      <div class="suggest" id="fromSuggest"></div>
+    </div>
+    <div class="field">
+      <label>到达站</label>
+      <input id="to" type="text" placeholder="如：北京西" autocomplete="off">
+      <div class="suggest" id="toSuggest"></div>
+    </div>
+
+    <div class="field">
+      <label>指定里程（可选，单位 km）</label>
+      <input id="km" type="number" min="1" step="1" placeholder="留空则走最短路径，如 2800">
+    </div>
+
+    <button class="btn" id="go">查询线路</button>
+    <div class="msg" id="msg"></div>
+
+    <div class="result" id="result">
+      <div class="route-line">
+        <span class="dot a"></span><span class="nm" id="rFrom">-</span>
+        <span class="arrow">⟶</span>
+        <span class="dot b"></span><span class="nm" id="rTo">-</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="sKm">-</b><span>走行里程 km</span></div>
+        <div class="stat"><b id="sSt">-</b><span>途经车站</span></div>
+      </div>
+      <div class="stations-head">
+        <span>途经车站（按里程）</span>
+        <button id="toggleSt" style="display:none">展开</button>
+      </div>
+      <div class="km-plan-box" id="kmPlanBox"></div>
+      <div class="warn-box" id="warnBox"></div>
+      <div class="station-list collapsed" id="stationList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="tip">点击地图上的车站可高亮定位</div>
+
+<script src="./config.js" type="module" id="cfg"></script>
+<script>
+/* ------------------------------------------------------------------
+   配置加载：从 ./config.js 读取高德 key 与安全密钥
+   使用动态 import 以便在 module 环境中拿到 export default
+------------------------------------------------------------------ */
+(async function loadConfig() {
+  let cfg = {};
+  try {
+    const mod = await import('./config.js');
+    cfg = mod.default || {};
+  } catch (e) {
+    console.warn('读取 config.js 失败，使用内置配置', e);
+  }
+  const keys = cfg.keys || {};
+  const jsKey = keys.amap_js || keys.amap || '';
+  const secKey = keys.amap_sec || '';
+
+  // 高德 JS API 2.0 需要在使用前设置安全密钥
+  if (secKey) window._AMapSecurityConfig = { securityJsCode: secKey };
+
+  const s = document.createElement('script');
+  s.src = 'https://webapi.amap.com/maps?v=2.0&key=' + encodeURIComponent(jsKey) + '&plugin=AMap.Scale,AMap.ToolBar';
+  s.onload = () => boot(jsKey);
+  s.onerror = () => showMsg('高德地图脚本加载失败，请检查网络或 key', true);
+  document.head.appendChild(s);
+})();
+
+/* ------------------------------------------------------------------
+   主逻辑
+------------------------------------------------------------------ */
+const API_BASE = 'http://127.0.0.1:8889';
+
+let map, polyline, startMarker, endMarker, stationMarkers = [], ferryLines = [];
+let allStations = [];
+let listExpanded = false;
+
+function $(id) { return document.getElementById(id); }
+
+function showMsg(text, isErr) {
+  const el = $('msg');
+  el.className = 'msg ' + (isErr ? 'err' : 'loading');
+  el.textContent = text;
+}
+function hideMsg() { const el = $('msg'); el.className = 'msg'; el.textContent = ''; }
+
+function boot(jsKey) {
+  if (!jsKey) {
+    showMsg('未在 config.js 中找到高德地图 key', true);
+    return;
+  }
+  map = new AMap.Map('map', {
+    zoom: 5,
+    center: [108.5, 34.5],
+    viewMode: '2D',
+    mapStyle: 'amap://styles/whitesmoke'
+  });
+  map.addControl(new AMap.Scale());
+  map.addControl(new AMap.ToolBar({ position: 'RB' }));
+
+  // 高德 JS API 加载完成后再绑定事件
+  $('go').addEventListener('click', doRoute);
+  $('swap').addEventListener('click', () => {
+    const a = $('from').value, b = $('to').value;
+    $('from').value = b; $('to').value = a;
+  });
+  $('toggleSt').addEventListener('click', toggleStationList);
+
+  ['from', 'to'].forEach(id => {
+    const inp = $(id), sug = $(id + 'Suggest');
+    let timer = null;
+    inp.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = inp.value.trim();
+      if (!q) { sug.style.display = 'none'; return; }
+      timer = setTimeout(() => fetchSuggest(q, sug), 120);
+    });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { sug.style.display = 'none'; doRoute(); }
+    });
+    document.addEventListener('click', (e) => {
+      if (!sug.contains(e.target) && e.target !== inp) sug.style.display = 'none';
+    });
+  });
+}
+
+async function fetchSuggest(q, sug) {
+  try {
+    const r = await fetch(API_BASE + '/api/v3/searchStation?limit=8&q=' + encodeURIComponent(q));
+    const j = await r.json();
+    const list = (j.stations || []);
+    if (!list.length) { sug.style.display = 'none'; return; }
+    sug.innerHTML = '';
+    list.forEach(s => {
+      const d = document.createElement('div');
+      d.innerHTML = escapeHtml(s.name) + '<span class="code">' + escapeHtml(s.code) + '</span>';
+      d.addEventListener('click', () => {
+        sug.previousElementSibling.value = s.name;
+        sug.style.display = 'none';
+      });
+      sug.appendChild(d);
+    });
+    sug.style.display = 'block';
+  } catch (e) {
+    sug.style.display = 'none';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ------------------------------------------------------------------
+   坐标系转换：WGS84 -> GCJ-02（火星坐标）
+
+   铁路数据来自 OSM（WGS84），高德底图使用 GCJ-02。中国境内两者
+   存在约 500~600 米系统性偏移（越往东越大），不转换会导致线路
+   整体偏移、与底图上的铁路对不上。
+   境外坐标不偏移（原样返回）。
+------------------------------------------------------------------ */
+const GCJ_A = 6378245.0;          // 克拉索夫斯基椭球长半轴
+const GCJ_EE = 0.00669342162296594323; // 偏心率平方
+
+function gcjOutOfChina(lng, lat) {
+  return !(lng > 73.66 && lng < 135.05 && lat > 3.86 && lat < 53.55);
+}
+
+function gcjTransformLat(x, y) {
+  let r = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  r += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+  r += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0;
+  r += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320.0 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0;
+  return r;
+}
+
+function gcjTransformLng(x, y) {
+  let r = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  r += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+  r += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0;
+  r += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0;
+  return r;
+}
+
+/** WGS84 经纬度 -> GCJ-02 经纬度，返回 [lng, lat] */
+function wgs84ToGcj02(lng, lat) {
+  if (gcjOutOfChina(lng, lat)) return [lng, lat];
+  let dLat = gcjTransformLat(lng - 105.0, lat - 35.0);
+  let dLng = gcjTransformLng(lng - 105.0, lat - 35.0);
+  const radLat = lat / 180.0 * Math.PI;
+  let magic = Math.sin(radLat);
+  magic = 1 - GCJ_EE * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  dLat = (dLat * 180.0) / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * Math.PI);
+  dLng = (dLng * 180.0) / (GCJ_A / sqrtMagic * Math.cos(radLat) * Math.PI);
+  return [lng + dLng, lat + dLat];
+}
+
+async function doRoute() {
+  const frm = $('from').value.trim();
+  const to = $('to').value.trim();
+  if (!frm || !to) { showMsg('请分别填写出发站和到达站', true); return; }
+  if (frm === to) { showMsg('出发站和到达站不能相同', true); return; }
+
+  const btn = $('go');
+  btn.disabled = true; btn.textContent = '计算中…';
+  showMsg('正在计算最短走行线路…');
+
+  try {
+    let url = API_BASE + '/api/v3/stationRoute?from=' + encodeURIComponent(frm) + '&to=' + encodeURIComponent(to);
+    const kmVal = $('km').value.trim();
+    if (kmVal) {
+      const kmNum = Number(kmVal);
+      if (!Number.isFinite(kmNum) || kmNum <= 0) {
+        showMsg('指定里程应为大于 0 的数字（单位：公里）', true);
+        btn.disabled = false; btn.textContent = '查询线路';
+        return;
+      }
+      url += '&km=' + encodeURIComponent(kmNum);
+    }
+    const r = await fetch(url);
+    const j = await r.json();
+    if (!j.ok) {
+      const hint = j.hint ? '（' + j.hint + '）' : '';
+      showMsg((j.error || '查询失败') + hint, true);
+      return;
+    }
+    hideMsg();
+    render(j);
+  } catch (e) {
+    showMsg('请求失败：' + e.message + '，请确认算路服务已在 8889 端口运行', true);
+  } finally {
+    btn.disabled = false; btn.textContent = '查询线路';
+  }
+}
+
+function render(j) {
+  // 结果面板
+  $('result').classList.add('show');
+  $('rFrom').textContent = j.from.name;
+  $('rTo').textContent = j.to.name;
+  $('sKm').textContent = j.distance.kilometers.toFixed(1);
+  $('sSt').textContent = j.stationCount;
+  // 指定里程规划信息
+  const kmBox = $('kmPlanBox');
+  if (j.kmPlan) {
+    const p = j.kmPlan;
+    const ok = p.reached ? '✓' : '近似';
+    kmBox.style.display = 'block';
+    kmBox.innerHTML = '按指定里程规划：目标 <b>' + p.requestedKm.toFixed(0) + ' km</b>，' +
+      '实际 <b>' + p.actualKm.toFixed(1) + ' km</b>（差 ' +
+      (p.diffKm >= 0 ? '+' : '') + p.diffKm.toFixed(1) + ' km）' + ok;
+  } else {
+    kmBox.style.display = 'none';
+  }
+
+  // 数据完整性警示（如车站远离铁路网，说明该段线路数据断链）
+  const warnBox = $('warnBox');
+  const warns = j.warnings || [];
+  if (warns.length) {
+    warnBox.style.display = 'block';
+    warnBox.textContent = '⚠ ' + warns.join('；');
+  } else {
+    warnBox.style.display = 'none';
+    warnBox.textContent = '';
+  }
+
+  allStations = j.stations || [];
+  renderStationList();
+
+  // 清除旧图层
+  if (polyline) { map.remove(polyline); polyline = null; }
+  if (startMarker) { map.remove(startMarker); startMarker = null; }
+  if (endMarker) { map.remove(endMarker); endMarker = null; }
+  stationMarkers.forEach(m => map.remove(m));
+  ferryLines.forEach(m => map.remove(m));
+  ferryLines = [];
+  stationMarkers = [];
+
+  // 线路：接口返回 WGS84，转成 GCJ-02 后再绘制，才能与高德底图对齐
+  // 线路几何来自 OSM（WGS-84），必须转成 GCJ-02 才能与高德底图对齐。
+  // 注意：车站坐标（12306）本身就是 GCJ-02，不能再转换。
+  const path = j.geometry.coordinates.map(c => wgs84ToGcj02(c[0], c[1]));
+  polyline = new AMap.Polyline({
+    path,
+    strokeColor: '#2f7ee0',
+    strokeWeight: 4,
+    strokeOpacity: 0.9,
+    lineJoin: 'round',
+    lineCap: 'round',
+    showDir: true,
+    zIndex: 50
+  });
+  map.add(polyline);
+
+  // 跨海轮渡段：用虚线单独绘制，直观区分「铁路走行」与「乘船过海」
+  if (j.ferry && j.ferry.hasFerry && j.ferry.segments && j.ferry.segments.length) {
+    j.ferry.segments.forEach(seg => {
+      const ferryLine = new AMap.Polyline({
+        path: [wgs84ToGcj02(seg.from[0], seg.from[1]),
+               wgs84ToGcj02(seg.to[0], seg.to[1])],
+        strokeColor: '#00a3a3',
+        strokeWeight: 4,
+        strokeOpacity: 0.95,
+        strokeStyle: 'dashed',
+        strokeDasharray: [10, 6],
+        zIndex: 55
+      });
+      map.add(ferryLine);
+      ferryLines.push(ferryLine);
+      // 跨海段中点加一个船运标签
+      const midLng = (seg.from[0] + seg.to[0]) / 2;
+      const midLat = (seg.from[1] + seg.to[1]) / 2;
+      const label = new AMap.Marker({
+        position: wgs84ToGcj02(midLng, midLat),
+        content: '<div style="background:#00a3a3;color:#fff;padding:2px 8px;border-radius:10px;' +
+                 'font-size:11px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3)">' +
+                 '⛴ 轮渡 ' + seg.km.toFixed(1) + ' km</div>',
+        offset: new AMap.Pixel(0, 0),
+        zIndex: 130
+      });
+      map.add(label);
+      ferryLines.push(label);
+    });
+  }
+
+  // 起终点标记（同样需要转坐标系）
+  startMarker = makeStationMarker(j.from, '#18a058');
+  endMarker = makeStationMarker(j.to, '#d03050');
+  map.add([startMarker, endMarker]);
+
+  // 途经车站小圆点（缩放足够大时显示名称）
+  allStations.forEach(s => {
+    const m = makeDotMarker(s);
+    stationMarkers.push(m);
+  });
+  if (stationMarkers.length) map.add(stationMarkers);
+
+  // 用线路包围盒自适应视野（padding 上下左右留白）
+  if (path.length) {
+    // 逐点求包围盒，避免 Math.min(...arr) 在数千点时栈溢出
+    let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
+    for (const p of path) {
+      if (p[0] < minLng) minLng = p[0];
+      if (p[0] > maxLng) maxLng = p[0];
+      if (p[1] < minLat) minLat = p[1];
+      if (p[1] > maxLat) maxLat = p[1];
+    }
+    // 手动计算合适的缩放级别：按跨度估算，避免 setBounds 在窄窗口下过度缩放
+    const cLng = (minLng + maxLng) / 2;
+    const cLat = (minLat + maxLat) / 2;
+    const spanLng = Math.max(maxLng - minLng, 0.01);
+    const spanLat = Math.max(maxLat - minLat, 0.01);
+    // 可视区（扣除左侧面板 400px 与上下留白）
+    const vw = Math.max(window.innerWidth - 440, 360);
+    const vh = Math.max(window.innerHeight - 140, 260);
+    // 墨卡托投影下的求缩放：
+    //   经度方向：worldPx(z) = 256 * 2^z 对应 360 度
+    //   纬度方向：需乘 cos(纬度) 校正（墨卡托拉升）
+    const cosLat = Math.cos(cLat * Math.PI / 180);
+    const zoomLng = Math.log2(vw * 360 / (spanLng * 256));
+    const zoomLat = Math.log2(vh * 360 * cosLat / (spanLat * 256));
+    let z = Math.floor(Math.min(zoomLng, zoomLat));
+    z = Math.max(3, Math.min(z, 15));
+    // 线路居中显示（左侧面板为半透明浮层，可拖动地图查看被遮挡部分）
+    map.setZoomAndCenter(z, [cLng, cLat]);
+  }
+}
+
+function makeStationMarker(st, color) {
+  const content = '<div style="width:14px;height:14px;border-radius:50%;background:' + color +
+    ';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>';
+  return new AMap.Marker({
+    position: [st.lon, st.lat],
+    content,
+    offset: new AMap.Pixel(-9, -9),
+    title: st.name,
+    zIndex: 120,
+    label: {
+      content: '<div style="background:#fff;padding:2px 6px;border-radius:4px;font-size:12px;' +
+               'box-shadow:0 1px 3px rgba(0,0,0,.2);color:#333;white-space:nowrap">' + escapeHtml(st.name) + '</div>',
+      direction: 'top',
+      offset: new AMap.Pixel(0, -6)
+    }
+  });
+}
+
+function makeDotMarker(s) {
+  const content = '<div style="width:7px;height:7px;border-radius:50%;background:#5aa9f0;' +
+    'border:1.5px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,.3)"></div>';
+  const m = new AMap.Marker({
+    position: [s.lon, s.lat],
+    content,
+    offset: new AMap.Pixel(-5, -5),
+    title: s.name + '（距起点 ' + s.km + ' km）',
+    zIndex: 60
+  });
+  m.on('click', () => {
+    map.setZoomAndCenter(Math.max(map.getZoom(), 11), [s.lon, s.lat]);
+  });
+  return m;
+}
+
+function renderStationList() {
+  const box = $('stationList');
+  box.innerHTML = '';
+  if (!allStations.length) {
+    box.innerHTML = '<div class="station-item"><span class="nm">线路上未识别到途经车站</span></div>';
+    $('toggleSt').style.display = 'none';
+    box.classList.remove('collapsed');
+    return;
+  }
+  allStations.forEach((s, i) => {
+    const d = document.createElement('div');
+    d.className = 'station-item';
+    d.innerHTML = '<span class="nm">' + (i + 1) + '. ' + escapeHtml(s.name) + '</span>' +
+                  '<span class="km">' + s.km.toFixed(1) + ' km</span>';
+    d.addEventListener('click', () => {
+      map.setZoomAndCenter(12, [s.lon, s.lat]);
+    });
+    box.appendChild(d);
+  });
+  $('toggleSt').style.display = 'inline-block';
+  box.classList.toggle('collapsed', !listExpanded);
+  $('toggleSt').textContent = listExpanded ? '收起' : '展开';
+}
+
+function toggleStationList() {
+  listExpanded = !listExpanded;
+  renderStationList();
+}
+</script>
+</body>
+</html>
