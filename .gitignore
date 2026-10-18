@@ -22,3 +22,7 @@ Thumbs.db
 # 临时文件
 *.log
 *.tmp
+
+# C 版生成产物
+data/rail_graph.bin
+c/build*/

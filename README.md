@@ -15,6 +15,30 @@
 
 ---
 
+## ⚡ C 语言版（多线程并发，4~29 倍性能）
+
+`c-rewrite` 分支提供 **C17 多线程重写**（线程池 HTTP + 每线程独立 A* 状态 +
+指定里程并行搜索）：同 API、同 JSON 结构、默认同端口 8889。
+
+| 指标 | Python server.py | C crtr_server | 优势 |
+|---|---|---|---|
+| 冷启动就绪 | 2.04s | 0.51s | 4.0x |
+| 首查 广州南→北京西 | 717.7ms | 24.8ms | 28.9x |
+| 热查均值 | 318.2ms | 33.8ms | 9.4x |
+| 8 并发 QPS | 56.8 | 575.0 | 10.1x |
+
+```bash
+python tools/export_graph.py      # pkl -> 二进制图 data/rail_graph.bin
+cmake -S c -B c/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc
+cmake --build c/build -j
+./c/build/crtr_server.exe        # 默认 :8889，--threads 可调
+```
+
+构建细节、`crtr_query` CLI、API 差异与完整基准见 [README_C.md](README_C.md)，
+实施计划与二进制图格式见 [c/PLAN.md](c/PLAN.md)。
+
+---
+
 ## 快速开始
 
 ```bash
